@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#03f4fc">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Cooked Goose">
+  <title>Cooked Goose</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Boot screen -->
+  <div id="boot" role="status" aria-live="polite">
+    <div class="boot-inner">
+      <img src="assets/logo.png" alt="Cooked Goose logo" class="boot-logo">
+      <div class="boot-title">Cooked Goose <span>95</span></div>
+      <div class="boot-tag">Dinner, sorted.</div>
+      <div class="boot-progress sunken"><div class="boot-bar" id="boot-bar"></div></div>
+      <div class="boot-msg" id="boot-msg">Starting Cooked Goose…</div>
+    </div>
+    <div class="boot-version" data-version></div>
+  </div>
+
+  <div id="desktop">
+    <section class="window" id="win-planner" aria-label="Weekly meal planner">
+      <header class="titlebar">
+        <img src="assets/favicon.png" alt="" class="tb-icon">
+        <span class="tb-title">Cooked Goose — Weekly Meal Planner</span>
+        <span class="tb-buttons" aria-hidden="true"><i>_</i><i>□</i><i>×</i></span>
+      </header>
+      <nav class="toolbar">
+        <button class="btn" data-action="shopping"><span class="ico">🛒</span>Shopping List</button>
+        <button class="btn" data-action="book"><span class="ico">📖</span>Recipe Book</button>
+        <button class="btn" data-action="clear-week"><span class="ico">🗑️</span>Clear Week</button>
+      </nav>
+      <div class="planner-body" id="planner-scroll">
+        <fieldset class="groupbox palette-box">
+          <legend>Meal types</legend>
+          <div class="palette" id="palette"></div>
+          <p class="hint">Drag a meal type onto a day — or tap one, then tap a day.</p>
+        </fieldset>
+        <div class="week" id="week"></div>
+      </div>
+      <footer class="statusbar">
+        <span class="sunken status-cell" id="status-msg">Ready</span>
+        <span class="sunken status-cell status-count" id="status-count"></span>
+      </footer>
+    </section>
+  </div>
+
+  <!-- Taskbar -->
+  <div id="taskbar" class="raised-bar">
+    <button class="btn start-btn" id="start-btn" aria-haspopup="menu" aria-expanded="false">
+      <img src="assets/favicon.png" alt="">Start
+    </button>
+    <button class="btn task-btn active" id="task-planner">
+      <img src="assets/favicon.png" alt=""><span>Meal Planner</span>
+    </button>
+    <span class="tray sunken">
+      <span class="version" data-version></span>
+      <span class="clock" id="clock"></span>
+    </span>
+  </div>
+
+  <div id="start-menu" class="raised" role="menu" hidden>
+    <div class="start-banner"><span>Cooked Goose <b>95</b></span></div>
+    <ul>
+      <li><button role="menuitem" data-action="planner"><span class="ico">📅</span>Meal Planner</button></li>
+      <li><button role="menuitem" data-action="shopping"><span class="ico">🛒</span>Shopping List…</button></li>
+      <li><button role="menuitem" data-action="book"><span class="ico">📖</span>Recipe Book</button></li>
+      <li class="sep"></li>
+      <li><button role="menuitem" data-action="clear-week"><span class="ico">🗑️</span>Clear Week…</button></li>
+      <li><button role="menuitem" data-action="about"><span class="ico">🪿</span>About Cooked Goose</button></li>
+    </ul>
+  </div>
+
+  <div id="modal-layer" hidden></div>
+  <div id="drag-ghost" hidden></div>
+
+  <script src="js/version.js"></script>
+  <script src="js/parser.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
