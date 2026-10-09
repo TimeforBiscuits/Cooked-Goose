@@ -119,7 +119,7 @@
   }
 
   function parseSegment(seg) {
-    seg = seg.trim().replace(/\.$/, '').trim();
+    seg = seg.trim().replace(/\.$/, '').trim().replace(/^(approximately|about|roughly)\s+(?=\d)/i, '');
     if (!seg) return [];
     const out = [];
 
@@ -170,72 +170,90 @@
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
 
-  function parseMarkdown(text) {
+  // opts.categoryMap renames sections, e.g. merging "Latvian fish dishes" into "Latvian dishes"
+  function parseMarkdown(text, opts = {}) {
+    const map = opts.categoryMap || {};
     const recipes = [];
+    const footnotes = {};
     let category = null, current = null;
     for (const raw of text.split(/\r?\n/)) {
       const line = raw.trim();
       let m;
-      if ((m = line.match(/^##\s+(?!#)(.+)$/))) {
-        category = m[1].trim();
+      if ((m = line.match(/^\[\^([^\]]+)\]:\s*(.+)$/))) {
+        footnotes[m[1]] = m[2].trim();
+      } else if ((m = line.match(/^##\s+(?!#)(.+)$/))) {
+        category = map[m[1].trim()] || m[1].trim();
         current = null;
       } else if ((m = line.match(/^###\s+(?:\d+\.\s*)?(.+)$/)) && category) {
-        current = { id: slug(category) + '--' + slug(m[1]), title: m[1].trim(), category, ingredients: [], ingredientsText: '', directions: '' };
+        current = { id: slug(category) + '--' + slug(m[1]), title: m[1].trim(), category, ingredients: [], ingredientsText: '', directions: '', refs: [] };
         recipes.push(current);
       } else if (current && (m = line.match(/^\*\*Ingredients:\*\*\s*(.+)$/))) {
         current.ingredientsText = m[1];
         current.ingredients = parseIngredients(m[1]);
       } else if (current && (m = line.match(/^\*\*Directions:\*\*\s*(.+)$/))) {
-        current.directions = m[1];
+        current.refs = [...m[1].matchAll(/\[\^([^\]]+)\]/g)].map((x) => x[1]);
+        current.directions = m[1].replace(/\s*\[\^[^\]]+\]/g, '').trim();
       }
     }
-    for (const r of recipes) r.tags = tagsFor(r);
+    for (const r of recipes) {
+      r.tags = tagsFor(r);
+      r.sources = r.refs.map((k) => footnotes[k]).filter(Boolean);
+      delete r.refs;
+    }
     return recipes.filter((r) => r.ingredients.length);
   }
 
   /* ---------- filters ---------- */
 
+  // "No …" filters exclude dishes containing that food (stock doesn't count).
+  // Diet filters only allow dishes that fit the diet (stock does count).
   const FILTERS = [
-    { id: 'chicken', label: 'No chicken' },
-    { id: 'fish', label: 'No fish' },
-    { id: 'salmon', label: 'No salmon' },
-    { id: 'beef', label: 'No beef' },
-    { id: 'pork', label: 'No pork' },
-    { id: 'rice', label: 'No rice' },
-    { id: 'noodles', label: 'No noodles' },
+    { id: 'chicken', label: 'No chicken', excludes: ['chicken'], conflict: 'contains chicken' },
+    { id: 'fish', label: 'No fish', excludes: ['fish'], conflict: 'contains fish' },
+    { id: 'salmon', label: 'No salmon', excludes: ['salmon'], conflict: 'contains salmon' },
+    { id: 'pork', label: 'No pork', excludes: ['pork'], conflict: 'contains pork' },
+    { id: 'pescatarian', label: 'Pescatarian', excludes: ['meat'], conflict: 'not pescatarian' },
+    { id: 'vegetarian', label: 'Vegetarian', excludes: ['meat', 'seafood'], conflict: 'not vegetarian' },
+    { id: 'vegan', label: 'Vegan', excludes: ['meat', 'seafood', 'animal'], conflict: 'not vegan' },
   ];
+  const FILTER_BY_ID = Object.fromEntries(FILTERS.map((f) => [f.id, f]));
 
-  const FILTER_RULES = {
-    chicken: /\bchicken\b/,
-    fish: /\b(salmon|cod|tuna|sardines?|anchov\w*|mackerel|trout|haddock|hake|halibut|pollock|sea bass|bass|sea bream|plaice|sole|tilapia|monkfish|swordfish|white fish|fish|shrimps?|prawns?|mussels?|clams?|scallops?|squid|calamari|crab|lobster|seafood)\b/,
-    salmon: /\bsalmon\b/,
-    beef: /\b(beef|steaks?|veal|short ribs?|brisket|sirloin|ribeye)\b/,
-    pork: /\b(pork|ham|bacon|sausages?|chorizo|pancetta|prosciutto|salami|lardons?|gammon|speck|nduja)\b/,
-    rice: /\brice\b/,
-    noodles: /\b(noodles?|pasta|spaghetti|tagliatelle|fusilli|penne|rigatoni|orzo|lasagne|lasagna|cannelloni|tortellini|ravioli|macaroni|linguine|fettuccine|farfalle|conchiglie|pappardelle|orecchiette|gnocchi|soba|udon|ramen|vermicelli)\b/,
-  };
-  // things that mention a filter word but aren't the food itself
-  const FILTER_IGNORE = {
-    _all: /\b(stock|broth|bouillon|fish sauce)\b/,
-    rice: /\brice\s+(noodles?|vinegar|paper|wine)\b/,
-    pork: /\bchicken sausages?\b/,
+  const FISH = /\b(salmon|cod|tuna|sardines?|anchov\w*|mackerel|trout|haddock|hake|halibut|pollock|sea bass|bass|sea bream|plaice|sole|tilapia|monkfish|swordfish|white fish|fish|herring|sprats?|shrimps?|prawns?|mussels?|clams?|scallops?|squid|calamari|crab|lobster|seafood)\b/;
+  const MEAT = /\b(chicken|turkey|duck|beef|steaks?|veal|short ribs?|brisket|sirloin|ribeye|pork|ham|bacon|sausages?|chorizo|pancetta|prosciutto|salami|lardons?|gammon|speck|nduja|lamb|mutton|venison|mince|shanks?|gelatine?)\b/;
+  const ANIMAL = /\b(milk|cream|butter|cheese|parmesan|cheddar|feta|mozzarella|ricotta|halloumi|gouda|mascarpone|quark|paneer|burrata|yogh?urt|skyr|kefir|eggs?|egg yolks?|honey|mayonnaise|crème fraîche|creme fraiche|ghee|buttermilk|pesto)\b/;
+
+  const TAG_RULES = {
+    // simple "No …" filters: stock and sauces don't count
+    chicken: { re: /\bchicken\b/, skip: /\b(stock|broth|bouillon)\b/ },
+    salmon: { re: /\bsalmon\b/, skip: /\b(stock|broth)\b/ },
+    fish: { re: FISH, skip: /\b(stock|broth|bouillon|fish sauce)\b/ },
+    pork: { re: /\b(pork|ham|bacon|sausages?|chorizo|pancetta|prosciutto|salami|lardons?|gammon|speck|nduja)\b/, skip: /\b(stock|broth|chicken sausages?)\b/ },
+    // diet filters: stock and fishy sauces do count, unless a vegetable option is offered
+    meat: { re: MEAT, skip: /\bor vegetable\b/ },
+    seafood: { re: new RegExp(FISH.source + '|\\b(worcestershire|fish sauce)\\b'), skip: /\bor vegetable\b/ },
+    animal: { re: ANIMAL, skip: /\b(plant-based|vegan|soy|oat|almond|coconut|peanut butter|butter beans?|butternut|cocoa butter)\b/ },
   };
 
   function tagsFor(recipe) {
     const tags = new Set();
     for (const ing of recipe.ingredients) {
       const n = ing.name.toLowerCase();
-      if (FILTER_IGNORE._all.test(n)) continue;
-      for (const [id, re] of Object.entries(FILTER_RULES)) {
-        if (FILTER_IGNORE[id] && FILTER_IGNORE[id].test(n)) continue;
-        if (re.test(n)) tags.add(id);
+      for (const [id, rule] of Object.entries(TAG_RULES)) {
+        if (rule.re.test(n) && !rule.skip.test(n)) tags.add(id);
       }
     }
     return [...tags];
   }
 
+  // unknown filter ids (e.g. ones removed in an update) are ignored
+  function filterConflicts(recipe, filters) {
+    return (filters || []).map((id) => FILTER_BY_ID[id])
+      .filter((f) => f && f.excludes.some((t) => recipe.tags.includes(t)))
+      .map((f) => f.conflict);
+  }
+
   function passesFilters(recipe, filters) {
-    return !(filters || []).some((f) => recipe.tags.includes(f));
+    return filterConflicts(recipe, filters).length === 0;
   }
 
   /* ---------- formatting ---------- */
@@ -344,12 +362,12 @@
   const HERBS = /\b(basil|parsley|dill|coriander|cilantro|mint|chives|tarragon|sage|rosemary|thyme|oregano|marjoram)\b/;
   const RULES = [
     ['Frozen', /\bfrozen\b/],
-    ['Pantry check', /\b(salt|black pepper|yeast|saffron|oil|vinegar|soy sauce|honey|worcestershire|mustard|curry powder|curry paste|chili flakes|chilli flakes|chili powder|cumin|paprika|cinnamon|turmeric|nutmeg|caraway|garam masala|bay leaf|bay leaves|flour|sugar|fish sauce|tomato paste|cornflour|cornstarch|cayenne|five-spice|allspice|cardamom|fennel seeds|mustard seeds|ground coriander|ground ginger|baking|maple syrup|vanilla|sriracha|hoisin|mirin|sesame seeds)\b/],
-    ['Tins, jars & stock', /\b(stock|broth|passata|jarred|from a jar|coconut milk|olives?|capers?|pesto|artichoke|peanut butter|tahini|harissa|sun-dried|chutney|salsa|tomato puree|pineapple|horseradish|gherkins?|pickles?)\b/],
+    ['Pantry check', /\b(salt|black pepper|yeast|saffron|oil|vinegar|soy sauce|honey|worcestershire|mustard|curry powder|curry paste|chili flakes|chilli flakes|chili powder|cumin|paprika|cinnamon|turmeric|nutmeg|caraway|garam masala|bay leaf|bay leaves|flour|sugar|fish sauce|tomato paste|cornflour|cornstarch|cayenne|five-spice|allspice|cardamom|fennel seeds|mustard seeds|ground coriander|ground ginger|baking|maple syrup|vanilla|sriracha|hoisin|mirin|sesame seeds|potato starch)\b/],
+    ['Tins, jars & stock', /\b(stock|broth|passata|jarred|from a jar|coconut milk|olives?|capers?|pesto|artichoke|peanut butter|tahini|harissa|sun-dried|chutney|salsa|tomato puree|pineapple|horseradish|gherkins?|pickles?|canned|mayonnaise)\b/],
     ['Meat & poultry', /\b(chicken|beef|steaks?|pork|ham|bacon|sausages?|turkey|lamb|mince|chorizo|duck|veal|venison|short ribs?|shanks?|pancetta|prosciutto|salami|lardons?|gammon|sirloin)\b/],
-    ['Fish & seafood', FILTER_RULES.fish],
-    ['Grains, pasta & pulses', /\b(rice|couscous|bulgur|quinoa|barley|oats|lentils|polenta|farro|freekeh|noodles?|pasta|spaghetti|tagliatelle|fusilli|penne|rigatoni|orzo|lasagne|cannelloni|macaroni|linguine|soba|split peas)\b/],
-    ['Dairy, eggs & chilled', /\b(milk|cream|yogh?urt|cheese|parmesan|cheddar|feta|mozzarella|ricotta|halloumi|gouda|mascarpone|butter|eggs?|crème fraîche|creme fraiche|quark|paneer|tofu|tortellini|puff pastry|hummus|gnocchi|burrata|skyr)\b/],
+    ['Fish & seafood', FISH],
+    ['Grains, pasta & pulses', /\b(rice|couscous|bulgur|quinoa|barley|oats|lentils|polenta|farro|freekeh|noodles?|pasta|spaghetti|tagliatelle|fusilli|penne|rigatoni|orzo|lasagne|cannelloni|macaroni|linguine|soba|split peas|dried [\w ]*peas)\b/],
+    ['Dairy, eggs & chilled', /\b(milk|cream|yogh?urt|cheese|parmesan|cheddar|feta|mozzarella|ricotta|halloumi|gouda|mascarpone|butter|eggs?|crème fraîche|creme fraiche|quark|paneer|tofu|tortellini|puff pastry|hummus|gnocchi|burrata|skyr|kefir|sour cream)\b/],
     ['Bread & bakery', /\b(bread|buns?|tortillas?|pitta|pita|naan|wraps?|breadcrumbs|filo|phyllo|baguette|rolls?|flatbreads?|pitas?|ciabatta|sourdough|crackers?)\b/],
     ['Nuts, seeds & dried fruit', /\b(almonds?|walnuts?|pine nuts|cashews?|peanuts?|pistachios?|hazelnuts?|pecans?|pumpkin seeds|sunflower seeds|seeds|apricots|raisins|sultanas|dates|cranberries|prunes|figs)\b/],
     ['Wine & other', /\b(wine|beer|cider|sherry|brandy|port)\b/],
@@ -421,7 +439,7 @@
 
   return {
     BASE_SERVINGS, FILTERS, GROUPS,
-    parseMarkdown, parseIngredients, passesFilters, tagsFor, classify,
+    parseMarkdown, parseIngredients, passesFilters, filterConflicts, tagsFor, classify,
     scaledPhrase, convertDirections, buildShoppingList, fmtVolume, fmtSpoons, fmtGrams,
   };
 });

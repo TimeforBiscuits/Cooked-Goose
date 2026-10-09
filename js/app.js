@@ -30,6 +30,8 @@
     'chicken dishes': { label: 'Chicken', emoji: '🍗', c: '#ffae00', t: '#000' },
     'vegetarian dishes': { label: 'Veggie', emoji: '🥕', c: '#12b358', t: '#fff' },
     'ambitious step-up dishes': { label: 'Ambitious', emoji: '🏆', c: '#8e2de2', t: '#fff' },
+    'vegan dishes': { label: 'Vegan', emoji: '🌱', c: '#c3a6ff', t: '#000' },
+    'latvian dishes': { label: 'Latvian', emoji: '🇱🇻', c: '#8c1d2c', t: '#fff' },
   };
   const FALLBACK_STYLES = [
     { emoji: '🍽️', c: '#00bfa5', t: '#000' }, { emoji: '🍛', c: '#f50057', t: '#fff' },
@@ -68,7 +70,11 @@
     try { s = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { /* ignore */ }
     s = s && typeof s === 'object' ? s : {};
     s.days = s.days || {};
-    for (const d of DAYS) s.days[d.id] = Object.assign(defaultDay(), s.days[d.id] || {});
+    const known = new Set(P.FILTERS.map((f) => f.id));
+    for (const d of DAYS) {
+      s.days[d.id] = Object.assign(defaultDay(), s.days[d.id] || {});
+      s.days[d.id].filters = (s.days[d.id].filters || []).filter((f) => known.has(f)); // drop retired filters
+    }
     s.shop = Object.assign({ days: [], pantry: true }, s.shop || {});
     return s;
   }
@@ -87,7 +93,7 @@
       if (!r.ok) throw new Error('Could not load recipes/' + f);
       return r.text();
     }));
-    recipes = texts.flatMap((t) => P.parseMarkdown(t));
+    recipes = texts.flatMap((t) => P.parseMarkdown(t, { categoryMap: manifest.categories }));
     byId.clear();
     for (const r of recipes) byId.set(r.id, r);
     const seen = new Map();
@@ -220,14 +226,13 @@
         const msg = selectedCat ? `Tap to add<br><b>${esc(catInfo(selectedCat).label)}</b>` : 'Drop a meal here';
         slot = `<div class="slot sunken empty" data-act="place"><span class="drop-ico">🍽️</span><span>${msg}</span></div>`;
       } else {
-        const bad = recipe && !P.passesFilters(recipe, day.filters)
-          ? recipe.tags.filter((t) => day.filters.includes(t)).map((t) => filterLabel(t).replace(/^No /, '')) : [];
+        const bad = recipe ? P.filterConflicts(recipe, day.filters) : [];
         slot = `<div class="slot sunken" data-act="place">
           <span class="cat-chip" data-from="${d.id}" style="${catVars(cat)}" title="Drag to move to another day"><span>${cat.emoji}</span><span>${esc(cat.label)}</span></span>
           ${recipe
             ? `<button class="dish" data-act="open">${esc(recipe.title)}</button>${journal.rating(recipe.id) ? `<span class="day-stars" title="Your rating">${starText(journal.rating(recipe.id))}</span>` : ''}`
             : '<span class="warn">Recipe not found — try Shuffle.</span>'}
-          ${bad.length ? `<span class="warn">⚠ Contains ${esc(bad.join(', '))}. Shuffle?</span>` : ''}
+          ${bad.length ? `<span class="warn">⚠ ${esc(bad.join(', ').replace(/^./, (c) => c.toUpperCase()))}. Shuffle?</span>` : ''}
           ${nFilters && !panelOpen ? `<div class="active-filters">${day.filters.map((f) => `<span>${esc(filterLabel(f))}</span>`).join('')}</div>` : ''}
         </div>`;
       }
@@ -578,6 +583,7 @@
         <h3>Directions</h3>
         <p class="directions">${esc(P.convertDirections(r.directions))}</p>
         ${servings !== P.BASE_SERVINGS ? `<p class="scaled-note">Ingredients are scaled for ${servings}. Directions are written for ${P.BASE_SERVINGS}, so any amounts mentioned there are for the original recipe; cooking times may need a little extra for larger batches.</p>` : ''}
+        ${r.sources && r.sources.length ? `<details class="sources"><summary>Source notes</summary>${r.sources.map((src) => `<p>${mdLinks(src)}</p>`).join('')}</details>` : ''}
         <h3>Cook's notes</h3>
         <div class="note-form">
           <textarea class="win-input" data-j="text" rows="2" placeholder="e.g. Needs a little more cumin" aria-label="New note">${esc(draft)}</textarea>
@@ -651,6 +657,11 @@
     const n = journal.rating(id), c = journal.notes(id).length;
     if (!n && !c) return '';
     return `<span class="tags">${n ? `<span class="book-stars">${starText(n)}</span>` : ''}${c ? ` 📝${c}` : ''}</span>`;
+  }
+
+  // escape, then turn [text](https://…) into links
+  function mdLinks(text) {
+    return esc(text).replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   }
 
   /* ============ dates ============ */

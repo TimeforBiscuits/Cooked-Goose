@@ -6,11 +6,10 @@ A Windows 95–flavoured weekly dinner planner and shopping-list maker. Built fo
 
 - **Plan the week.** Drag a meal type (Dutch Oven, Pasta, Soup, Salmon…) onto a day, or tap a meal type and then tap a day. Cooked Goose picks a random dish from that category and tries not to repeat a dish already on the week.
 - **Shuffle.** Don't fancy it? Hit 🔀 Shuffle for another dish from the same category.
-- **Filters per day.** No chicken / fish / salmon / beef / pork / rice / noodles. Shuffles and new picks skip dishes that contain the filtered food.
-  - *No fish* includes shrimp and other seafood.
-  - *No noodles* includes all pasta (and gnocchi), but not couscous.
-  - *No rice* blocks rice only (rice noodles are caught by *No noodles*).
-  - Stock never counts, so a beef-stock soup survives *No beef*.
+- **Filters per day.** Shuffles and new picks respect them.
+  - *No chicken / No fish / No salmon / No pork* skip dishes containing that food. *No fish* includes shrimp and other seafood. Stock doesn't count for these.
+  - *Pescatarian / Vegetarian / Vegan* only allow dishes that fit the diet. For these, stock and fishy sauces (Worcestershire, fish sauce) **do** count, so a chicken-stock soup isn't vegetarian. *Vegan* also excludes dairy, eggs, honey and pesto; plant-based yogurt and soy milk are fine.
+  - If a planned dish clashes with a filter you turn on later, the day shows a warning (e.g. "Not vegetarian. Shuffle?").
 - **Servings per day.** Every recipe is written for 3 people; each day can be set to 2–6 and quantities scale.
 - **Recipe viewer.** Tap a dish to see scaled ingredients and directions.
 - **Shopping list.** Pick the days you're shopping for, and Cooked Goose combines all ingredients and groups them by type (Produce, Meat, Dairy…), with an optional *Pantry check* section for staples. 📋 copies it as plain text.
@@ -36,6 +35,10 @@ Everything saves locally first, so it works offline and syncs when it can (on op
 - Oven temperatures are °C.
 - Scaled quantities are rounded to sensible amounts (½ onion, nearest 5–10 g, nearest ¼ tsp). The shopping list rounds whole items (onions, cans, lemons) up.
 
+## Recipes
+
+277 recipes in 13 categories: the original 11, plus **Vegan** (35) and **Latvian** (22, vegetarian and fish). Latvian dishes include their source notes (tap *Source notes* in the recipe window).
+
 ## Adding recipes
 
 1. Drop a new markdown file into `recipes/`, using the same format as `batch-01-2026-10-04.md`:
@@ -43,7 +46,7 @@ Everything saves locally first, so it works offline and syncs when it can (on op
    - `### 1. Recipe title`
    - `**Ingredients:** item; item; item.`
    - `**Directions:** …`
-2. Add its filename to `recipes/index.json`.
+2. Add its filename to `recipes/index.json`. To rename or merge sections, map them under `"categories"` (e.g. both Latvian sections map to `"Latvian dishes"`). Footnotes like `[^L1]` in directions are shown as source notes.
 3. Run `node tests/check.js`. It checks every recipe parses and prints how many dishes survive each filter. (The expected recipe count in that script will need bumping.)
 
 New categories appear automatically with a fallback colour. Ingredients the classifier doesn't recognise land under *Produce* in the shopping list; add keywords in `js/parser.js` (`RULES`) if something lands in the wrong aisle.

@@ -648,6 +648,12 @@ button { cursor: pointer; }
 .day-stars, .book-stars { color: #e0a800; -webkit-text-stroke: .5px #000; letter-spacing: 1px; }
 .day-stars { font-size: 15px; }
 
+/* source notes (researched recipes) */
+.sources { margin-top: 12px; font-size: 12px; color: #444; }
+.sources summary { cursor: pointer; font-weight: 700; color: var(--teal-5); }
+.sources p { margin: 6px 0 0; line-height: 1.45; }
+.sources a { color: #00008b; overflow-wrap: anywhere; }
+
 /* cook's notes */
 .win-input {
   font: inherit;

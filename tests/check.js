@@ -5,7 +5,7 @@ const P = require('../js/parser.js');
 
 const dir = path.join(__dirname, '..', 'recipes');
 const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
-const recipes = manifest.files.flatMap((f) => P.parseMarkdown(fs.readFileSync(path.join(dir, f), 'utf8')));
+const recipes = manifest.files.flatMap((f) => P.parseMarkdown(fs.readFileSync(path.join(dir, f), 'utf8'), { categoryMap: manifest.categories }));
 
 let failures = 0;
 function check(cond, msg) {
@@ -14,7 +14,12 @@ function check(cond, msg) {
 const byTitle = (t) => recipes.find((r) => r.title === t);
 const tags = (t) => byTitle(t).tags.sort().join(',');
 
-check(recipes.length === 220, `expected 220 recipes, got ${recipes.length}`);
+check(recipes.length === 277, `expected 277 recipes, got ${recipes.length}`);
+const inCat = (c) => recipes.filter((r) => r.category === c);
+check(inCat('Vegan dishes').length === 35, 'vegan category has 35 dishes');
+check(inCat('Latvian dishes').length === 22, 'both Latvian sections merge into one category');
+check(!recipes.some((r) => /\[\^/.test(r.directions)), 'footnote markers stripped from directions');
+check(inCat('Latvian dishes').every((r) => r.sources.length === 1), 'Latvian dishes carry their source notes');
 const ids = new Set(recipes.map((r) => r.id));
 check(ids.size === recipes.length, 'recipe ids are unique');
 
@@ -27,12 +32,21 @@ for (const r of recipes) {
 }
 
 // filters
-check(tags('Chicken Cacciatore') === 'chicken,noodles', 'cacciatore tags: ' + tags('Chicken Cacciatore'));
-check(tags('French Lentil, Sausage and Vegetable Stew') === 'pork', 'chicken stock does not count: ' + tags('French Lentil, Sausage and Vegetable Stew'));
-check(tags('Coconut, Lime and Shrimp Soup') === 'fish,noodles', 'shrimp is fish, rice noodles are noodles not rice: ' + tags('Coconut, Lime and Shrimp Soup'));
-check(tags('Soy-Ginger Salmon Rice Bowls') === 'fish,rice,salmon', 'salmon bowl tags: ' + tags('Soy-Ginger Salmon Rice Bowls'));
-check(tags('Beef Bourguignon') === 'beef', 'bourguignon tags: ' + tags('Beef Bourguignon'));
-check(tags('Red Lentil, Sweet Potato and Coconut Curry') === '', 'veg curry has no tags');
+const ok = (t, f) => P.passesFilters(byTitle(t), f);
+check(!ok('Chicken Cacciatore', ['chicken']), 'no chicken blocks cacciatore');
+check(ok('French Lentil, Sausage and Vegetable Stew', ['chicken']), 'chicken stock does not count for No chicken');
+check(!ok('French Lentil, Sausage and Vegetable Stew', ['pork']), 'sausage counts as pork');
+check(!ok('Coconut, Lime and Shrimp Soup', ['fish']), 'shrimp counts as fish');
+check(!ok('Soy-Ginger Salmon Rice Bowls', ['salmon']), 'salmon blocked');
+check(ok('Soy-Ginger Salmon Rice Bowls', ['pescatarian']) && !ok('Soy-Ginger Salmon Rice Bowls', ['vegetarian']), 'salmon is pescatarian, not vegetarian');
+check(!ok('Beef Bourguignon', ['pescatarian']), 'beef is not pescatarian');
+check(inCat('Vegan dishes').every((r) => P.passesFilters(r, ['vegan'])), 'every vegan dish passes Vegan');
+check(inCat('Vegetarian dishes').every((r) => P.passesFilters(r, ['vegetarian'])), 'every vegetarian dish passes Vegetarian');
+check(!ok('Lemon, Pea and Ricotta Pasta', ['vegan']) && ok('Lemon, Pea and Ricotta Pasta', ['vegetarian']), 'ricotta: vegetarian, not vegan');
+check(!ok('Siļķe kažokā — Layered Herring, Beetroot and Apple Salad', ['vegetarian']), 'herring is not vegetarian');
+check(P.passesFilters({ tags: ['meat'] }, ['beef', 'rice', 'noodles']), 'retired filter ids are ignored');
+const stockOnly = recipes.find((r) => r.ingredients.some((i) => /chicken stock/.test(i.name)) && !r.ingredients.some((i) => /chicken(?! stock)|beef|pork|turkey|sausage|ham|bacon|lamb/.test(i.name.toLowerCase())));
+if (stockOnly) check(!P.passesFilters(stockOnly, ['vegetarian']), `chicken stock counts for Vegetarian (${stockOnly.title})`);
 
 // scaling + units
 const ing = (t, name) => byTitle(t).ingredients.find((i) => i.name === name);
@@ -69,10 +83,10 @@ check(cleared.recipes.x.rating === null, 'clearing a rating syncs');
 console.log(`${recipes.length} recipes parsed`);
 const cats = [...new Set(recipes.map((r) => r.category))];
 console.log('\nRecipes left per category when each filter is on:');
-console.log('category'.padEnd(28) + P.FILTERS.map((f) => f.id.padStart(8)).join(''));
+console.log('category'.padEnd(28) + P.FILTERS.map((f) => f.id.padStart(12)).join(''));
 for (const c of cats) {
   const rs = recipes.filter((r) => r.category === c);
-  console.log(`${c} (${rs.length})`.padEnd(28) + P.FILTERS.map((f) => String(rs.filter((r) => P.passesFilters(r, [f.id])).length).padStart(8)).join(''));
+  console.log(`${c} (${rs.length})`.padEnd(28) + P.FILTERS.map((f) => String(rs.filter((r) => P.passesFilters(r, [f.id])).length).padStart(12)).join(''));
 }
 
 if (failures) { console.error(`\n${failures} check(s) failed`); process.exit(1); }

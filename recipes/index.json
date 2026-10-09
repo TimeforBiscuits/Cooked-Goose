@@ -1,1 +1,11 @@
-{ "files": ["batch-01-2026-10-04.md"] }
+{
+  "files": [
+    "batch-01-2026-10-04.md",
+    "batch-02-vegan-latvian-2026-10-09.md"
+  ],
+  "categories": {
+    "Easy vegan meals": "Vegan dishes",
+    "Latvian vegetarian dishes": "Latvian dishes",
+    "Latvian fish dishes": "Latvian dishes"
+  }
+}
