@@ -15,8 +15,19 @@ A Windows 95–flavoured weekly dinner planner and shopping-list maker. Built fo
 - **Recipe viewer.** Tap a dish to see scaled ingredients and directions.
 - **Shopping list.** Pick the days you're shopping for, and Cooked Goose combines all ingredients and groups them by type (Produce, Meat, Dairy…), with an optional *Pantry check* section for staples. 📋 copies it as plain text.
 - Drag a dish's coloured category chip onto another day to move or swap dinners.
+- **Ratings & cook's notes.** Open any recipe to give it 1–5 stars (tap the same star again to clear) and log dated notes each time you cook it ("Needs a little more cumin"). Ratings show on the planner and in the Recipe Book.
 
-Your plan saves automatically on each device (browser storage); plans don't sync between devices.
+Your week plan saves on each device (browser storage). Notes and ratings save on the device too, and can sync across devices — see below.
+
+## Syncing notes & ratings
+
+Notes and ratings sync through a **secret GitHub Gist** (`cooked-goose-journal.json`) on your GitHub account — unlisted and separate from this public repo.
+
+1. **Start → Sync Notes & Ratings…** (or tap the 💾 in the taskbar).
+2. Tap **Create a token on GitHub** — the page opens with the `gist` permission pre-ticked. Set an expiration you're happy with, generate it, copy it, paste it into Cooked Goose and tap **Connect**. The gist is created automatically.
+3. On another device, either paste the same token, or tap **Copy setup link** on a connected device and open that link on the new one.
+
+Everything saves locally first, so it works offline and syncs when it can (on open, after each change, and when you come back to the app). If two devices change things at once, nothing is lost: notes from both are kept, deletions stick, and the most recent rating wins. The setup link contains your token, so only send it to yourself. To stop syncing on a device, use **Disconnect**; to revoke access entirely, delete the token at github.com → Settings → Developer settings → Tokens.
 
 ## Units
 

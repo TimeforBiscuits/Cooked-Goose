@@ -51,6 +51,20 @@ const flat = list.flatMap((g) => g.items.map((i) => g.name + ': ' + i.text));
 check(flat.includes('Produce: 2 onions'), 'onions combine across dishes');
 check(flat.some((t) => t.startsWith('Pantry check: ') && /olive oil/.test(t)), 'olive oil in pantry');
 
+// journal merge (notes + ratings sync)
+const J = require('../js/journal.js');
+const devA = { recipes: { x: { rating: 4, ratedAt: '2026-10-09T10:00:00Z', notes: [{ id: 'n1', date: '2026-10-09', text: 'More cumin', createdAt: '2026-10-09T10:00:00Z' }] } } };
+const devB = { recipes: { x: { rating: 2, ratedAt: '2026-10-09T09:00:00Z', notes: [{ id: 'n1', deleted: true, createdAt: '2026-10-09T10:00:00Z' }, { id: 'n2', date: '2026-10-08', text: 'Two cups couscous', createdAt: '2026-10-08T18:00:00Z' }] }, y: { rating: 5, ratedAt: '2026-10-01T00:00:00Z' } } };
+const m1 = J.merge(devA, devB), m2 = J.merge(devB, devA);
+check(J.same(m1, m2), 'merge is order-independent');
+check(m1.recipes.x.rating === 4, 'newest rating wins');
+check(m1.recipes.y.rating === 5, 'ratings from both devices kept');
+check(m1.recipes.x.notes.find((n) => n.id === 'n1').deleted === true, 'deleted note stays deleted');
+check(m1.recipes.x.notes.some((n) => n.id === 'n2' && n.text === 'Two cups couscous'), 'notes from both devices kept');
+check(J.same(J.merge(m1, m1), m1), 'merge is idempotent');
+const cleared = J.merge(m1, { recipes: { x: { rating: null, ratedAt: '2026-10-10T00:00:00Z' } } });
+check(cleared.recipes.x.rating === null, 'clearing a rating syncs');
+
 // coverage report
 console.log(`${recipes.length} recipes parsed`);
 const cats = [...new Set(recipes.map((r) => r.category))];

@@ -40,6 +40,19 @@
   const byId = new Map();
   let categories = []; // [{ name, label, emoji, c, t, count }]
   let state = loadState();
+
+  // cook's notes + ratings (local first, optional GitHub Gist sync)
+  const journalListeners = new Set();
+  let storage;
+  try { storage = window.localStorage; } catch (e) { storage = { getItem: () => null, setItem: () => {} }; }
+  const journal = window.CGJournal.createStore({
+    storage,
+    fetchImpl: window.fetch.bind(window),
+    onChange: () => { if (recipes.length) renderWeek(); journalListeners.forEach((fn) => fn()); },
+    onStatus: () => { renderSyncStatus(); journalListeners.forEach((fn) => fn()); },
+  });
+  const RATING_LABELS = ['', 'Never again', 'Meh', 'Solid', 'Really good', 'Honk-worthy!'];
+  const starText = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
   let selectedCat = null; // for tap-to-place
   const openFilterPanels = new Set();
 
@@ -212,7 +225,7 @@
         slot = `<div class="slot sunken" data-act="place">
           <span class="cat-chip" data-from="${d.id}" style="${catVars(cat)}" title="Drag to move to another day"><span>${cat.emoji}</span><span>${esc(cat.label)}</span></span>
           ${recipe
-            ? `<button class="dish" data-act="open">${esc(recipe.title)}</button>`
+            ? `<button class="dish" data-act="open">${esc(recipe.title)}</button>${journal.rating(recipe.id) ? `<span class="day-stars" title="Your rating">${starText(journal.rating(recipe.id))}</span>` : ''}`
             : '<span class="warn">Recipe not found — try Shuffle.</span>'}
           ${bad.length ? `<span class="warn">⚠ Contains ${esc(bad.join(', '))}. Shuffle?</span>` : ''}
           ${nFilters && !panelOpen ? `<div class="active-filters">${day.filters.map((f) => `<span>${esc(filterLabel(f))}</span>`).join('')}</div>` : ''}
@@ -429,6 +442,7 @@
   }
 
   function closeWindow(win) {
+    if (win._onClose) win._onClose();
     win.remove();
     if (!layer.children.length) layer.hidden = true;
   }
@@ -480,6 +494,65 @@
     const cat = catInfo(r.category);
     const body = document.createElement('div');
     body.className = 'notepad sunken';
+    let draft = '';
+    let draftDate = todayISO();
+
+    // only the journal parts redraw on sync, so a half-typed note is never lost
+    const drawJournal = () => {
+      const cur = journal.rating(r.id) || 0;
+      $('[data-j="rating"]', body).innerHTML = `
+        <span class="stars" role="radiogroup" aria-label="Your rating">
+          ${[1, 2, 3, 4, 5].map((n) => `<button class="star${n <= cur ? ' on' : ''}" data-star="${n}" role="radio" aria-checked="${n === cur}" aria-label="${n} star${n > 1 ? 's' : ''}" title="${n === cur ? 'Tap again to clear' : RATING_LABELS[n]}">★</button>`).join('')}
+        </span>
+        <span class="rating-label">${cur ? esc(RATING_LABELS[cur]) : 'Not rated yet'}</span>`;
+      const notes = journal.notes(r.id);
+      $('[data-j="list"]', body).innerHTML = notes.length
+        ? notes.map((n) => `
+          <li class="cook-note">
+            <div class="cook-note-body">
+              <div class="note-date">📅 ${esc(fmtDate(n.date))}</div>
+              <div class="note-text">${esc(n.text)}</div>
+            </div>
+            <button class="btn small" data-del="${esc(n.id)}" aria-label="Delete note"><span>🗑️</span></button>
+          </li>`).join('')
+        : '<li class="cook-note empty">No notes yet. Cooked it? Jot down what you\'d change next time.</li>';
+      $('[data-j="sync"]', body).innerHTML = syncLine();
+    };
+
+    body.addEventListener('click', (e) => {
+      const star = e.target.closest('[data-star]');
+      if (star) {
+        const n = parseInt(star.dataset.star, 10);
+        journal.setRating(r.id, n === journal.rating(r.id) ? null : n);
+        return;
+      }
+      if (e.target.closest('[data-j="add"]')) {
+        const ta = $('[data-j="text"]', body);
+        if (!ta.value.trim()) { ta.focus(); return; }
+        journal.addNote(r.id, $('[data-j="date"]', body).value || todayISO(), ta.value);
+        draft = '';
+        ta.value = '';
+        toast('📝 Note saved');
+        return;
+      }
+      const del = e.target.closest('[data-del]');
+      if (del) {
+        showDialog({
+          title: 'Delete note', icon: '🗑️',
+          html: '<p>Delete this note? This can\'t be undone.</p>',
+          buttons: [
+            { label: 'Delete', primary: true, onClick: () => journal.deleteNote(r.id, del.dataset.del) },
+            { label: 'Cancel' },
+          ],
+        });
+        return;
+      }
+      if (e.target.closest('[data-act="sync-setup"]')) openSync();
+    });
+    body.addEventListener('input', (e) => {
+      if (e.target.matches('[data-j="text"]')) draft = e.target.value;
+      if (e.target.matches('[data-j="date"]')) draftDate = e.target.value;
+    });
 
     const draw = () => {
       const factor = servings / P.BASE_SERVINGS;
@@ -489,6 +562,7 @@
           ${dayId ? `<span>· ${esc(DAYS.find((d) => d.id === dayId).name)}</span>` : ''}
         </div>
         <h2>${esc(r.title)}</h2>
+        <div class="stars-row" data-j="rating"></div>
         <div class="recipe-meta">
           <label class="servings">Serves
             <select class="win" data-r="servings">
@@ -503,7 +577,18 @@
         }).join('')}</ul>
         <h3>Directions</h3>
         <p class="directions">${esc(P.convertDirections(r.directions))}</p>
-        ${servings !== P.BASE_SERVINGS ? `<p class="scaled-note">Ingredients are scaled for ${servings}. Directions are written for ${P.BASE_SERVINGS}, so any amounts mentioned there are for the original recipe; cooking times may need a little extra for larger batches.</p>` : ''}`;
+        ${servings !== P.BASE_SERVINGS ? `<p class="scaled-note">Ingredients are scaled for ${servings}. Directions are written for ${P.BASE_SERVINGS}, so any amounts mentioned there are for the original recipe; cooking times may need a little extra for larger batches.</p>` : ''}
+        <h3>Cook's notes</h3>
+        <div class="note-form">
+          <textarea class="win-input" data-j="text" rows="2" placeholder="e.g. Needs a little more cumin" aria-label="New note">${esc(draft)}</textarea>
+          <div class="note-form-row">
+            <label class="note-date-label">Cooked on <input type="date" class="win-input" data-j="date" value="${esc(draftDate)}"></label>
+            <button class="btn" data-j="add"><span>📝 Add note</span></button>
+          </div>
+        </div>
+        <ul class="notes-list" data-j="list"></ul>
+        <p class="sync-line" data-j="sync"></p>`;
+      drawJournal();
       $('select', body).addEventListener('change', (e) => {
         servings = parseInt(e.target.value, 10);
         if (dayId) {
@@ -527,6 +612,9 @@
     foot.push(button('Close', () => closeWindow(win), { primary: true }));
     win = openWindow({ title: `${r.title}.txt — Notepad`, body, foot });
     $('.modal-body', win).scrollTop = 0;
+    journalListeners.add(drawJournal);
+    win._onClose = () => journalListeners.delete(drawJournal);
+    journal.scheduleSync(0);
   }
 
   /* ============ recipe book ============ */
@@ -542,7 +630,7 @@
           <button data-cat="${esc(c.name)}" class="${c.name === current ? 'on' : ''}"><span>${c.emoji}</span>${esc(c.label)}</button>`).join('')}
         </div>
         <div class="book-list sunken">${list.map((r) => `
-          <button data-id="${esc(r.id)}"><span>📄</span><span>${esc(r.title)}</span></button>`).join('')}
+          <button data-id="${esc(r.id)}"><span>📄</span><span>${esc(r.title)}</span>${bookTags(r.id)}</button>`).join('')}
         </div>`;
     };
     body.addEventListener('click', (e) => {
@@ -552,8 +640,127 @@
       if (r) openRecipe(r.dataset.id, null);
     });
     draw();
+    const redraw = () => { const top = $('.book-list', body).scrollTop; draw(); $('.book-list', body).scrollTop = top; };
+    journalListeners.add(redraw);
     let win;
     win = openWindow({ title: 'Recipe Book', body, foot: [button('Close', () => closeWindow(win), { primary: true })] });
+    win._onClose = () => journalListeners.delete(redraw);
+  }
+
+  function bookTags(id) {
+    const n = journal.rating(id), c = journal.notes(id).length;
+    if (!n && !c) return '';
+    return `<span class="tags">${n ? `<span class="book-stars">${starText(n)}</span>` : ''}${c ? ` 📝${c}` : ''}</span>`;
+  }
+
+  /* ============ dates ============ */
+
+  function todayISO() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function fmtDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    if (!m) return iso || '';
+    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function ago(iso) {
+    if (!iso) return 'never';
+    const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.round(s / 60)} min ago`;
+    if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+    return fmtDate(iso.slice(0, 10));
+  }
+
+  /* ============ sync ============ */
+
+  const TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=gist&description=Cooked%20Goose%20sync';
+
+  function syncLine() {
+    const st = journal.status;
+    if (!journal.connected) return '💾 Notes and ratings are saved on this device only. <button class="linkish" data-act="sync-setup">Set up sync</button> to see them everywhere.';
+    if (st.state === 'error') return `⚠️ Sync problem: ${esc(st.message)} <button class="linkish" data-act="sync-setup">Sync settings</button>`;
+    if (st.state === 'syncing') return '⏳ Syncing…';
+    return '☁️ Synced across your devices.';
+  }
+
+  function renderSyncStatus() {
+    const el = $('#sync-ind');
+    if (!el) return;
+    const st = journal.status;
+    const map = { off: ['💾', 'Notes saved on this device only — tap to set up sync'], idle: ['☁️', 'Sync on'], syncing: ['⏳', 'Syncing…'], ok: ['☁️', 'Synced ' + ago(journal.lastSync)], error: ['⚠️', 'Sync problem: ' + st.message] };
+    const [ico, label] = map[st.state] || map.off;
+    el.textContent = ico;
+    el.title = label;
+    el.setAttribute('aria-label', label);
+    el.classList.toggle('warn-ind', st.state === 'error');
+  }
+
+  function openSync() {
+    const body = document.createElement('div');
+    let win;
+    let connectError = '';
+    const draw = () => {
+      const st = journal.status;
+      if (!journal.connected) {
+        body.innerHTML = `
+          <div class="dialog-row"><div class="dialog-ico">☁️</div><div>
+            <p><b>Share notes and ratings between your devices.</b></p>
+            <p>Cooked Goose keeps them in a <b>secret GitHub Gist</b> on your GitHub account (a private-by-link file, separate from the public app). You need a GitHub token once per device — or use a setup link from a device that's already connected.</p>
+            <ol class="steps">
+              <li><a href="${TOKEN_URL}" target="_blank" rel="noopener">Create a token on GitHub ↗</a><br><span class="small">"gist" is already ticked. Set <b>Expiration</b> to "No expiration" (or a long date), then tap <b>Generate token</b> and copy it.</span></li>
+              <li>Paste it here:
+                <input type="password" class="win-input token-input" data-s="token" placeholder="ghp_…" autocomplete="off" autocapitalize="off" spellcheck="false">
+              </li>
+            </ol>
+            ${connectError ? `<p class="warn">${esc(connectError)}</p>` : ''}
+          </div></div>`;
+        setFoot([button('Cancel', () => closeWindow(win)), button('Connect', connectNow, { primary: true })]);
+      } else {
+        body.innerHTML = `
+          <div class="dialog-row"><div class="dialog-ico">${st.state === 'error' ? '⚠️' : '☁️'}</div><div>
+            <p><b>${st.state === 'error' ? 'Sync problem' : st.state === 'syncing' ? 'Syncing…' : 'Sync is on'}</b></p>
+            ${st.state === 'error' ? `<p class="warn">${esc(st.message)}</p>` : `<p>Last synced: ${esc(ago(journal.lastSync))}</p>`}
+            <p><b>Add another device:</b> copy the setup link, send it to yourself (AirDrop, Notes…), and open it on the other device in the browser you use for Cooked Goose.</p>
+            <p class="small">The link contains your token, so treat it like a password and don't share it with anyone else.</p>
+          </div></div>`;
+        setFoot([
+          button('Disconnect', () => {
+            showDialog({
+              title: 'Disconnect sync', icon: '❓',
+              html: '<p>Stop syncing on this device?</p><p>Notes stay on this device and in your gist; nothing is deleted.</p>',
+              buttons: [{ label: 'Disconnect', primary: true, onClick: () => { journal.disconnect(); draw(); } }, { label: 'Cancel' }],
+            });
+          }),
+          button('🔗 Copy setup link', async () => {
+            const link = `${location.origin}${location.pathname}#sync=${encodeURIComponent(journal.token)}`;
+            toast(await copyText(link) ? '🔗 Setup link copied' : 'Couldn\'t copy the link');
+          }),
+          button('🔄 Sync now', () => journal.syncNow()),
+          button('Close', () => closeWindow(win), { primary: true }),
+        ]);
+      }
+    };
+    function setFoot(btns) { const f = $('.modal-foot', win); f.innerHTML = ''; f.append(...btns); }
+    async function connectNow() {
+      const input = $('[data-s="token"]', body);
+      const token = input && input.value.trim();
+      if (!token) { input && input.focus(); return; }
+      connectError = '';
+      await journal.connect(token);
+      if (journal.status.state === 'ok') {
+        toast('☁️ Sync connected!');
+      } else {
+        connectError = journal.status.message || 'Couldn\'t connect.';
+        journal.disconnect();
+      }
+      draw();
+    }
+    win = openWindow({ title: 'Sync Settings', body, foot: [], cls: 'narrow' });
+    journalListeners.add(draw);
+    win._onClose = () => journalListeners.delete(draw);
+    draw();
   }
 
   /* ============ shopping list wizard ============ */
@@ -669,28 +876,33 @@
     }
 
     async function copyList() {
-      let ok = false;
-      try {
-        await navigator.clipboard.writeText(listText);
-        ok = true;
-      } catch (e) {
-        const ta = document.createElement('textarea');
-        ta.value = listText;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.append(ta);
-        ta.select();
-        ta.setSelectionRange(0, listText.length);
-        try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
-        ta.remove();
-      }
+      const ok = await copyText(listText);
       if (ok) toast('📋 Shopping list copied to clipboard!');
       else showDialog({ title: 'Clipboard', icon: '⚠️', html: '<p>Couldn\'t reach the clipboard. Select the list and copy it manually.</p>', buttons: [{ label: 'OK', primary: true }] });
     }
 
     win = openWindow({ title: 'Shopping List Wizard', body, foot: [] });
     step1();
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.append(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+      ta.remove();
+      return ok;
+    }
   }
 
   /* ============ start menu, toolbar, misc ============ */
@@ -718,6 +930,7 @@
     switch (action) {
       case 'shopping': openShopping(); break;
       case 'book': openBook(); break;
+      case 'sync': openSync(); break;
       case 'planner':
         while (layer.lastElementChild) closeWindow(layer.lastElementChild);
         break;
@@ -788,6 +1001,17 @@
     renderPalette();
     renderWeek();
     setStatus('Ready — drag a meal type onto a day.');
+    renderSyncStatus();
+    const pair = /^#sync=(.+)$/.exec(location.hash);
+    if (pair) {
+      history.replaceState(null, '', location.pathname + location.search);
+      journal.connect(decodeURIComponent(pair[1])).then(() => {
+        toast(journal.status.state === 'ok' ? '☁️ Sync connected on this device!' : '⚠️ Sync setup failed — see Start → Sync');
+      });
+    } else {
+      journal.syncNow();
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) journal.scheduleSync(0); });
 
     await new Promise((res) => setTimeout(res, 300));
     bootEl.classList.add('done');

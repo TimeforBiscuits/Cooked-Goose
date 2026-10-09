@@ -65,6 +65,7 @@
       <img src="assets/favicon.png" alt=""><span>Meal Planner</span>
     </button>
     <span class="tray sunken">
+      <button class="sync-ind" id="sync-ind" data-action="sync" aria-label="Sync settings">💾</button>
       <span class="version" data-version></span>
       <span class="clock" id="clock"></span>
     </span>
@@ -76,6 +77,7 @@
       <li><button role="menuitem" data-action="planner"><span class="ico">📅</span>Meal Planner</button></li>
       <li><button role="menuitem" data-action="shopping"><span class="ico">🛒</span>Shopping List…</button></li>
       <li><button role="menuitem" data-action="book"><span class="ico">📖</span>Recipe Book</button></li>
+      <li><button role="menuitem" data-action="sync"><span class="ico">☁️</span>Sync Notes &amp; Ratings…</button></li>
       <li class="sep"></li>
       <li><button role="menuitem" data-action="clear-week"><span class="ico">🗑️</span>Clear Week…</button></li>
       <li><button role="menuitem" data-action="about"><span class="ico">🪿</span>About Cooked Goose</button></li>
@@ -87,6 +89,7 @@
 
   <script src="js/version.js"></script>
   <script src="js/parser.js"></script>
+  <script src="js/journal.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
