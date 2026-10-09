@@ -37,7 +37,7 @@ Everything saves locally first, so it works offline and syncs when it can (on op
 
 ## Recipes
 
-277 recipes in 13 categories: the original 11, plus **Vegan** (35) and **Latvian** (22, vegetarian and fish). Latvian dishes include their source notes (tap *Source notes* in the recipe window).
+277 recipes in 13 categories: the original 11, plus **Vegan** (35) and **Latvian** (22, vegetarian and fish). The **Any Fish** tile picks from every dish containing fish or seafood (salmon, cod, herring, shrimp…), whatever its category. Latvian dishes include their source notes (tap *Source notes* in the recipe window).
 
 ## Adding recipes
 

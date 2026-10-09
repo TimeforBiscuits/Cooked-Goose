@@ -48,6 +48,12 @@ check(P.passesFilters({ tags: ['meat'] }, ['beef', 'rice', 'noodles']), 'retired
 const stockOnly = recipes.find((r) => r.ingredients.some((i) => /chicken stock/.test(i.name)) && !r.ingredients.some((i) => /chicken(?! stock)|beef|pork|turkey|sausage|ham|bacon|lamb/.test(i.name.toLowerCase())));
 if (stockOnly) check(!P.passesFilters(stockOnly, ['vegetarian']), `chicken stock counts for Vegetarian (${stockOnly.title})`);
 
+// "Any Fish" virtual category (matches js/app.js VIRTUAL_CATEGORIES)
+const anyFish = recipes.filter((r) => r.tags.includes('fish'));
+check(anyFish.length === 59, `Any Fish has 59 dishes, got ${anyFish.length}`);
+check(inCat('Salmon dishes').concat(inCat('Shrimp dishes')).every((r) => r.tags.includes('fish')), 'every salmon and shrimp dish is in Any Fish');
+check(!anyFish.some((r) => r.category === 'Vegan dishes'), 'no vegan dish is in Any Fish');
+
 // scaling + units
 const ing = (t, name) => byTitle(t).ingredients.find((i) => i.name === name);
 const bb = 'Beef Bourguignon';

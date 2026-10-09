@@ -33,6 +33,12 @@
     'vegan dishes': { label: 'Vegan', emoji: '🌱', c: '#c3a6ff', t: '#000' },
     'latvian dishes': { label: 'Latvian', emoji: '🇱🇻', c: '#8c1d2c', t: '#fff' },
   };
+  // Virtual categories pull from every recipe that matches, whatever section it lives in.
+  // `after` places the tile next to a real category in the palette.
+  const VIRTUAL_CATEGORIES = [
+    { name: 'Any fish', label: 'Any Fish', emoji: '🎣', c: '#1a2a8c', t: '#fff', after: 'Shrimp dishes',
+      match: (r) => r.tags.includes('fish') },
+  ];
   const FALLBACK_STYLES = [
     { emoji: '🍽️', c: '#00bfa5', t: '#000' }, { emoji: '🍛', c: '#f50057', t: '#fff' },
     { emoji: '🥘', c: '#ffea00', t: '#000' }, { emoji: '🌮', c: '#651fff', t: '#fff' },
@@ -107,10 +113,20 @@
       seen.get(r.category).count++;
     }
     categories = [...seen.values()];
+    for (const v of VIRTUAL_CATEGORIES) {
+      const count = recipes.filter(v.match).length;
+      if (!count) continue;
+      const at = categories.findIndex((c) => c.name === v.after);
+      categories.splice(at < 0 ? categories.length : at + 1, 0, Object.assign({ count, virtual: true }, v));
+    }
   }
 
   const catInfo = (name) => categories.find((c) => c.name === name) ||
     { name, label: name, emoji: '🍽️', c: '#ccc', t: '#000', count: 0 };
+  function inCategory(name) {
+    const v = VIRTUAL_CATEGORIES.find((x) => x.name === name);
+    return recipes.filter(v ? v.match : (r) => r.category === name);
+  }
   const catVars = (c) => `--c:${c.c};--t:${c.t}`;
   const filterLabel = (id) => (P.FILTERS.find((f) => f.id === id) || { label: id }).label;
 
@@ -119,7 +135,7 @@
   }
 
   function pickRecipe(cat, filters, excludeId, dayId) {
-    const pool = recipes.filter((r) => r.category === cat && r.id !== excludeId && P.passesFilters(r, filters));
+    const pool = inCategory(cat).filter((r) => r.id !== excludeId && P.passesFilters(r, filters));
     if (!pool.length) return null;
     const used = usedIds(dayId);
     const fresh = pool.filter((r) => !used.has(r.id));
@@ -298,9 +314,9 @@
       shuffleDay(dayId);
     } else if (act === 'clear') {
       clearDay(dayId);
-    } else if (act === 'open') {
+    } else if (act === 'open' && !selectedCat) {
       openRecipe(state.days[dayId].recipeId, dayId);
-    } else if (act === 'place' && !e.target.closest('.cat-chip')) {
+    } else if ((act === 'place' || act === 'open') && !e.target.closest('.cat-chip')) {
       if (selectedCat) {
         const cat = selectedCat;
         selectedCat = null;
@@ -630,7 +646,7 @@
     const body = document.createElement('div');
     body.className = 'book';
     const draw = () => {
-      const list = recipes.filter((r) => r.category === current);
+      const list = inCategory(current);
       body.innerHTML = `
         <div class="book-cats sunken">${categories.map((c) => `
           <button data-cat="${esc(c.name)}" class="${c.name === current ? 'on' : ''}"><span>${c.emoji}</span>${esc(c.label)}</button>`).join('')}
